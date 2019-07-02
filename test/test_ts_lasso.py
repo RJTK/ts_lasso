@@ -1,9 +1,12 @@
 import unittest
 import numpy as np
 
+from levinson.levinson import (yule_walker, A_to_B, B_to_A,
+                               whittle_lev_durb)
 
 from ts_lasso.ts_lasso import (soft_threshold, predict,
-                               cost_function, cost_gradient)
+                               cost_function, cost_gradient,
+                               compute_covariance, solve_lasso)
 
 
 class TestMain(unittest.TestCase):
@@ -138,4 +141,95 @@ class TestMain(unittest.TestCase):
         B = np.random.normal(size=(3, 2, 2))
         R = np.random.normal(size=(3, 2, 2))
         cost_gradient(B, R)
+        return
+
+
+    def test_cost_gradient001(self):
+        p = 4
+        T = 1000
+        n = 2
+        X = np.random.normal(size=(T, n))
+        X[1:] = X[:-1] + 0.5 * np.random.normal(size=(T - 1, n))
+        R = compute_covariance(X, p_max=p)
+
+        # I need to fix the convention so that the WLD solution
+        # matches the solution when lmbda = 0 and W = 1
+        # I think my gradient computation might just be wrong.
+        A, _, _ = whittle_lev_durb(R)
+        B_hat = A_to_B(A)
+        g = cost_gradient(B_hat, R)
+        np.testing.assert_almost_equal(g, np.zeros_like(g))
+        return
+
+
+class TestProxDescent(unittest.TestCase):
+    def setUp(self):
+        np.random.seed(0)
+        return
+
+    def _create_case(self, p=1, T=300):
+        n = 2
+        X = np.random.normal(size=(T, n))
+        X[1:] = X[:-1] + 0.5 * np.random.normal(size=(T - 1, n))
+        R = compute_covariance(X, p_max=p)
+        return R, X
+
+    def test001(self):
+        p = 1
+        R, X = self._create_case(p, T=1000)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0)
+        A_hat = B_to_A(B_hat)
+        YW = yule_walker(A_hat, R)
+
+        np.testing.assert_almost_equal(YW[1], np.zeros_like(YW[1]))
+        self.assertAlmostEqual(eps, 0.0)
+        return
+
+    def test002(self):
+        p = 5
+        R, X = self._create_case(p)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0)
+        A_hat = B_to_A(B_hat)
+        YW = yule_walker(A_hat, R)
+
+        for tau in range(1, p + 1):
+            np.testing.assert_almost_equal(YW[tau],
+                                           np.zeros_like(YW[tau]))
+        self.assertAlmostEqual(eps, 0.0)
+        return
+
+    def test003(self):
+        p = 5
+        lmbda = 0.1
+
+        for _ in range(10):
+            R, X = self._create_case(p, T=10000)
+            B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda,
+                                     maxiter=1000, eps=1e-5)
+            self.assertTrue(eps > 0)
+            J_star = cost_function(B_hat, X, lmbda=lmbda)
+            for _ in range(10):
+                J = cost_function(
+                    B_hat + 0.025 * np.random.normal(size=B_hat.shape),
+                    X, lmbda=lmbda)
+                self.assertTrue(J_star < J)
+        return
+
+    def test004(self):
+        p = 5
+        n = 2
+        lmbda = 0.1
+
+        for _ in range(10):
+            R, X = self._create_case(p, T=10000)
+            W = np.random.normal(size=(p, n, n))
+            B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
+                                     maxiter=1000, eps=1e-5)
+            self.assertTrue(eps > 0)
+            J_star = cost_function(B_hat, X, lmbda=lmbda, W=W)
+            for _ in range(10):
+                J = cost_function(
+                    B_hat + 0.025 * np.random.normal(size=B_hat.shape),
+                    X, lmbda=lmbda, W=W)
+                self.assertTrue(J_star < J)
         return
