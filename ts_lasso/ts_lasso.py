@@ -109,7 +109,10 @@ def _compute_gradient_residual(B, g, lmbda, W):
 
 
 @numba.jit(nopython=True, cache=True)
-def cost_function(B, X, lmbda=0.0, W=None):
+def exact_cost_function(B, X, lmbda=0.0, W=None):
+    """
+    Cost function evaluated exactly on the data X.
+    """
     p, n, _ = B.shape
     T, _ = X.shape
     err = np.sum(X[0]**2)
@@ -120,6 +123,31 @@ def cost_function(B, X, lmbda=0.0, W=None):
             x_hat = predict(B, X[t - 1: t - p - 1: -1])
         err = err + np.sum((X[t] - x_hat)**2)
     cost = (1. / (2 * T)) * err
+
+    if lmbda != 0.0:
+        if W is not None:
+            cost = cost + lmbda * l1_norm(B * W)
+        else:
+            cost = cost + lmbda * l1_norm(B)
+    return cost
+
+
+@numba.jit(nopython=True, cache=True)
+def cost_function(B, R, lmbda=0.0, W=None):
+    """
+    Cost function applied to the covariance sequence R(tau)
+    """
+    p, _, _ = B.shape
+    cost = np.trace(R[0])
+    for tau in range(1, p + 1):
+        Z = -2 * R[tau]
+        for s in range(1, p + 1):
+            if tau - s >= 0:
+                Z = Z + B[s - 1] @ R[tau - s]
+            else:
+                Z = Z + B[s - 1] @ R[s - tau].T
+        cost = cost + np.sum(Z * B[tau - 1])
+    cost = 0.5 * cost
 
     if lmbda != 0.0:
         if W is not None:
