@@ -143,7 +143,6 @@ class TestMain(unittest.TestCase):
         cost_gradient(B, R)
         return
 
-
     def test_cost_gradient001(self):
         p = 4
         T = 1000
@@ -152,9 +151,6 @@ class TestMain(unittest.TestCase):
         X[1:] = X[:-1] + 0.5 * np.random.normal(size=(T - 1, n))
         R = compute_covariance(X, p_max=p)
 
-        # I need to fix the convention so that the WLD solution
-        # matches the solution when lmbda = 0 and W = 1
-        # I think my gradient computation might just be wrong.
         A, _, _ = whittle_lev_durb(R)
         B_hat = A_to_B(A)
         g = cost_gradient(B_hat, R)
@@ -177,7 +173,8 @@ class TestProxDescent(unittest.TestCase):
     def test001(self):
         p = 1
         R, X = self._create_case(p, T=1000)
-        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0, eps=-np.inf,
+                                 maxiter=1000)
         A_hat = B_to_A(B_hat)
         YW = yule_walker(A_hat, R)
 
@@ -188,7 +185,8 @@ class TestProxDescent(unittest.TestCase):
     def test002(self):
         p = 5
         R, X = self._create_case(p)
-        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0,
+                                 eps=-np.inf, maxiter=1000)
         A_hat = B_to_A(B_hat)
         YW = yule_walker(A_hat, R)
 
@@ -200,12 +198,12 @@ class TestProxDescent(unittest.TestCase):
 
     def test003(self):
         p = 5
-        lmbda = 0.1
+        lmbda = 0.05
 
         for _ in range(10):
-            R, X = self._create_case(p, T=10000)
+            R, X = self._create_case(p, T=1000)
             B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda,
-                                     maxiter=1000, eps=1e-5)
+                                     maxiter=250, eps=-np.inf)
             self.assertTrue(eps > 0)
             J_star = cost_function(B_hat, X, lmbda=lmbda)
             for _ in range(10):
@@ -218,13 +216,13 @@ class TestProxDescent(unittest.TestCase):
     def test004(self):
         p = 5
         n = 2
-        lmbda = 0.1
+        lmbda = 0.01
 
         for _ in range(10):
-            R, X = self._create_case(p, T=10000)
+            R, X = self._create_case(p, T=1000)
             W = np.random.normal(size=(p, n, n))
             B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
-                                     maxiter=1000, eps=1e-5)
+                                     maxiter=250, eps=1e-5)
             self.assertTrue(eps > 0)
             J_star = cost_function(B_hat, X, lmbda=lmbda, W=W)
             for _ in range(10):

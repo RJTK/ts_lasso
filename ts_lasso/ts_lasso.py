@@ -152,7 +152,7 @@ def soft_threshold(Z, tau, W=None):
     """
     Weighted soft-threshold.  This implements
 
-    prox_tau (W \cdot Z)
+    prox_tau (W * Z)
     """
     if W is None:
         X = np.abs(Z) - tau
@@ -166,19 +166,12 @@ def cost_gradient(B, R):
     """
     Returns a descent direction (i.e. grad g)
     """
-    # TODO: I think my gradient calculation is wrong
-    # TODO: here I have essentially just thrown in the YW equations.
-
     p, n, _ = B.shape
     grad = np.zeros_like(B)
 
     for s in range(1, p + 1):
         grad[s - 1] = -R[s]
         for tau in range(1, p + 1):
-            # if tau - s >= 0:
-            #     grad[s - 1] = grad[s - 1] + R[tau - s] @ B[tau - 1]
-            # else:
-            #     grad[s - 1] = grad[s - 1] + R[s - tau].T @ B[tau - 1]
             if s - tau >= 0:
                 grad[s - 1] = grad[s - 1] + B[tau - 1] @ R[s - tau]
             else:
