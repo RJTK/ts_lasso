@@ -93,7 +93,7 @@ class TestMain(unittest.TestCase):
                        [-1.8, 2.6]]])
         cost_xp = (1. / 4) * (np.sum((X[1] - B[0] @ X[0])**2) +
                               np.sum(X[0]**2))
-        cost = exact_cost_function(B, X, lmbda=0.0, W=None)
+        cost = exact_cost_function(B, X, lmbda=0.0, W=1.0)
         self.assertAlmostEqual(cost, cost_xp)
         return
 
@@ -106,7 +106,7 @@ class TestMain(unittest.TestCase):
             cost_xp = (1. / 6) * (np.sum((X[2] - B[0] @ X[1])**2) +
                                   np.sum((X[1] - B[0] @ X[0])**2) +
                                   np.sum(X[0]**2))
-            cost = exact_cost_function(B, X, lmbda=0.0, W=None)
+            cost = exact_cost_function(B, X, lmbda=0.0, W=1.0)
             self.assertAlmostEqual(cost, cost_xp)
         return
 
@@ -119,7 +119,7 @@ class TestMain(unittest.TestCase):
                                    np.sum((X[1] - B[0] @ X[0])**2) +
                                    np.sum(X[0]**2)) +
                        2 * np.sum(np.abs(B)))
-            cost = exact_cost_function(B, X, lmbda=2.0, W=None)
+            cost = exact_cost_function(B, X, lmbda=2.0, W=1.0)
             self.assertAlmostEqual(cost, cost_xp)
         return
 

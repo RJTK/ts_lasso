@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from ts_lasso.ts_lasso import (solve_lasso, _basic_prox_descent,
                                cost_function, regularization_path,
-                               cost_path)
+                               cost_path, _backtracking_prox_descent)
 from levinson.levinson import (whittle_lev_durb, compute_covariance,
                                A_to_B)
 
@@ -27,10 +27,13 @@ def convergence_example():
 
     B_basic = B0
     B_decay_step = B0
+    B_bt = B0
+    L_bt = 0.01
 
     N_iters = 100
-    GradRes = np.empty((N_iters, 2))
-    Cost = np.empty((N_iters, 2))
+    N_algs = 3
+    GradRes = np.empty((N_iters, N_algs))
+    Cost = np.empty((N_iters, N_algs))
     for it in range(N_iters):
         B_basic, err_basic = _basic_prox_descent(
             R, B_basic, lmbda=lmbda, maxiter=1, ss=0.01,
@@ -38,21 +41,28 @@ def convergence_example():
         B_decay_step, err_decay_step = _basic_prox_descent(
             R, B_decay_step, lmbda=lmbda, maxiter=1, ss=1. / (it + 1),
             eps=-np.inf)
+        B_bt, err_bt, L_bt = _backtracking_prox_descent(
+            R, B_bt, lmbda, eps=-np.inf, maxiter=1, L=L_bt, eta=1.1)
 
-        Cost[it, 0] = cost_function(B_basic, X, lmbda)
-        Cost[it, 1] = cost_function(B_decay_step, X, lmbda)
+        Cost[it, 0] = cost_function(B_basic, R, lmbda)
+        Cost[it, 1] = cost_function(B_decay_step, R, lmbda)
+        Cost[it, 2] = cost_function(B_bt, R, lmbda)
 
         GradRes[it, 0] = err_basic
         GradRes[it, 1] = err_decay_step
+        GradRes[it, 2] = err_bt
 
     fig, axes = plt.subplots(2, 1, sharex=True)
-    axes[0].plot(GradRes[:, 0], label="Basic (constant stepsize)",
+    axes[0].plot(GradRes[:, 0], label="ISTA (constant stepsize)",
                  linewidth=2)
-    axes[0].plot(GradRes[:, 1], label="Basic (1/t stepsize)",
+    axes[0].plot(GradRes[:, 1], label="ISTA (1/t stepsize)",
+                 linewidth=2)
+    axes[0].plot(GradRes[:, 2], label="ISTA with Backtracking Line Search",
                  linewidth=2)
 
     axes[1].plot(Cost[:, 0], linewidth=2)
     axes[1].plot(Cost[:, 1], linewidth=2)
+    axes[1].plot(Cost[:, 2], linewidth=2)
 
     axes[1].set_xlabel("Iteration Count")
     axes[0].set_ylabel("Log Gradient Residuals")
@@ -83,7 +93,7 @@ def cross_validation_example():
     X1 = X[T // 2:]
 
     lmbda_path = np.logspace(-5, 1, 1000)
-    B_path = regularization_path(X0, p, lmbda_path, W=None,
+    B_path = regularization_path(X0, p, lmbda_path, W=1.0,
                                  step_rule=0.05, eps=-np.inf,
                                  maxiter=500)
     cost = cost_path(B_path, X1)
