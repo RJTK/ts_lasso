@@ -8,6 +8,30 @@ from levinson.levinson import (compute_covariance,
 # TODO: Work out a proper stopping criteria
 
 
+def adalasso_bic(X, p_max, nu=1.25):
+    T = len(X)
+    R = compute_covariance(X, p_max=p_max)
+    B0 = _wld_init(R)
+    W = 1. / np.abs(B0)**nu
+    lmbda_path = np.logspace(-6, 1.0, 250)
+
+    B_path = _regularization_path(R, B0, lmbda_path, W)
+    cost = cost_path(B_path, R)
+
+    bic = compute_bic(B_path, cost, T)
+    lmbda_i_opt = np.argmax(bic)
+    lmbda_star, B_star, cost_star = (lmbda_path[lmbda_i_opt],
+                                     B_path[lmbda_i_opt],
+                                     cost[lmbda_i_opt])
+    return B_star, cost_star, lmbda_star
+
+
+def compute_bic(B_path, cost, T):
+    bic = -cost - (np.log(T) / T) * (np.sum(np.abs(B_path) > 0,
+                                            axis=(1, 2, 3)))
+    return bic
+
+
 def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
                         line_srch=None, eps=1e-6, maxiter=100,
                         method="ista"):
@@ -22,8 +46,15 @@ def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
     """
     R = compute_covariance(X, p_max=p)
     B0 = _wld_init(R)
+    return _regularization_path(R, B0, lmbda_path, W=W, step_rule=step_rule,
+                                line_srch=line_srch, eps=eps, maxiter=maxiter,
+                                method=method)
 
-    n = B0.shape[1]
+
+def _regularization_path(R, B0, lmbda_path, W=1.0, step_rule=0.1,
+                        line_srch=None, eps=1e-6, maxiter=100,
+                        method="ista"):
+    p, n, _ = B0.shape
 
     B_hat = np.empty((len(lmbda_path), p, n, n))
 
@@ -38,10 +69,23 @@ def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
     return B_hat
 
 
-def cost_path(B_path, X, W=1.0):
+@numba.jit(nopython=True, cache=True)
+def cost_path(B_path, R):
+    """
+    Calculates the cost of each B in B_path without considering the
+    reguarlization term.
+    """
     cost = np.empty(B_path.shape[0])
     for i in range(len(cost)):
-        cost[i] = exact_cost_function(B_path[i], X, lmbda=0.0, W=W)
+        cost[i] = cost_function(B_path[i], R, lmbda=0.0)
+    return cost
+
+
+@numba.jit(nopython=True, cache=True)
+def exact_cost_path(B_path, X):
+    cost = np.empty(B_path.shape[0])
+    for i in range(len(cost)):
+        cost[i] = exact_cost_function(B_path[i], X, lmbda=0.0)
     return cost
 
 

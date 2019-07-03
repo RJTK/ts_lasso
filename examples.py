@@ -4,7 +4,8 @@ import matplotlib.pyplot as plt
 from ts_lasso.ts_lasso import (solve_lasso, _basic_prox_descent,
                                cost_function, regularization_path,
                                cost_path, _backtracking_prox_descent,
-                               _fast_prox_descent, _solve_lasso)
+                               _fast_prox_descent, _solve_lasso,
+                               exact_cost_path)
 from levinson.levinson import (whittle_lev_durb, compute_covariance,
                                A_to_B)
 
@@ -121,7 +122,7 @@ def cross_validation_example():
     B_path = regularization_path(X0, p, lmbda_path, W=1.0,
                                  step_rule=0.05, eps=-np.inf,
                                  maxiter=500)
-    cost = cost_path(B_path, X1)
+    cost = exact_cost_path(B_path, X1)
 
     plt.plot(lmbda_path, cost, linewidth=2)
     plt.xscale("log")
