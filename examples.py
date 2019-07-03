@@ -13,7 +13,7 @@ from levinson.levinson import (whittle_lev_durb, compute_covariance,
 def convergence_example():
     np.random.seed(0)
     T = 1000
-    n = 60
+    n = 50
     p = 15
     X = np.random.normal(size=(T, n))
     X[1:] = 0.25 * np.random.normal(size=(T - 1, n)) + X[:-1, ::-1]

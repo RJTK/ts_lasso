@@ -27,7 +27,7 @@ def adalasso_bic(X, p_max, nu=1.25):
 
     def solve_cost(lmbda):
         B_hat, _ = _solve_lasso(R, B0, lmbda, W, method="fista",
-                                eps=1e-4)
+                                eps=1e-3)
         cost = cost_function(B_hat, R)
         return B_hat, cost
 
@@ -35,7 +35,8 @@ def adalasso_bic(X, p_max, nu=1.25):
         B_hat, cost = solve_cost(lmbda)
         return compute_bic(B_hat[None, ...], cost, T)[0]
 
-    res = minimize_scalar(bic, bounds=[1e-6, 1.0], method="bounded")
+    res = minimize_scalar(bic, bounds=[1e-6, 1.0], method="bounded",
+                          tol=1e-3)
     lmbda_star = res.x
 
     B_star, cost_star = solve_cost(lmbda_star)
