@@ -7,10 +7,6 @@ from levinson.levinson import (compute_covariance,
 
 # TODO: Work out a proper stopping criteria
 
-# TODO: Check my residual calculation, the subdiff is probably wrong
-
-# TODO: Momentum terms
-
 
 def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
                         line_srch=None, eps=1e-6, maxiter=100,
@@ -52,6 +48,7 @@ def cost_path(B_path, X, W=1.0):
 def solve_lasso(X, p, lmbda=0.0, W=1.0, step_rule=0.1,
                 line_srch=None, eps=1e-6, maxiter=100,
                 method="ista"):
+    assert np.all(W >= 0), "W must be non-negative"
     R = compute_covariance(X, p_max=p)
     B0 = _wld_init(R)
     return _solve_lasso(R, B0, lmbda, W, step_rule=step_rule,
@@ -162,7 +159,7 @@ def _fast_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
         M = B0
 
     res = np.inf
-    for it in range(maxiter):
+    for _ in range(maxiter):
         # TODO: I should only calculate this every 10 or something
         # TODO: iterations cause the gradient doesn't get reused.
         res_vec = _compute_gradient_residual(B, cost_gradient(B, R),
@@ -200,11 +197,12 @@ def _line_search(B, R, g, lmbda, W, L, eta):
 
 @numba.jit(nopython=True, cache=True)
 def _compute_gradient_residual(B, g, lmbda, W):
-    Z = (B == 0)
-
-    res = (g * np.logical_and(Z, np.abs(g) > lmbda)) +\
-        g * np.logical_not(Z) * W * B
-    return res
+    abs_g = np.abs(g)
+    lW = lmbda * W
+    I_B = (np.abs(B) > 0)
+    I_g = (abs_g > lW)
+    return (np.abs(lW + np.sign(B) * g) * I_B +
+            I_g * (1 - I_B) * np.abs(lW - abs_g))
 
 
 @numba.jit(nopython=True, cache=True)

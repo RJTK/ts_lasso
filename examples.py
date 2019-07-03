@@ -10,6 +10,7 @@ from levinson.levinson import (whittle_lev_durb, compute_covariance,
 
 
 def convergence_example():
+    np.random.seed(0)
     T = 1000
     n = 60
     p = 15
@@ -35,11 +36,13 @@ def convergence_example():
     t_f = 1.0
     M_f = B0
 
-    B_star, _ = _solve_lasso(R, B0, lmbda, 1.0,
+    W = 1. / np.abs(B0)**(1.25)  # Adaptive weighting
+
+    B_star, _ = _solve_lasso(R, B0, lmbda, W,
                              step_rule=0.01, line_srch=1.1,
                              method="fista", eps=-np.inf,
                              maxiter=3000)
-    cost_star = cost_function(B_star, R, lmbda=lmbda, W=1.0)
+    cost_star = cost_function(B_star, R, lmbda=lmbda, W=W)
 
     N_iters = 100
     N_algs = 4
@@ -48,20 +51,21 @@ def convergence_example():
     for it in range(N_iters):
         B_basic, err_basic = _basic_prox_descent(
             R, B_basic, lmbda=lmbda, maxiter=1, ss=0.01,
-            eps=-np.inf)
+            eps=-np.inf, W=W)
         B_decay_step, err_decay_step = _basic_prox_descent(
             R, B_decay_step, lmbda=lmbda, maxiter=1, ss=1. / (it + 1),
-            eps=-np.inf)
+            eps=-np.inf, W=W)
         B_bt, err_bt, L_bt = _backtracking_prox_descent(
-            R, B_bt, lmbda, eps=-np.inf, maxiter=1, L=L_bt, eta=1.1)
+            R, B_bt, lmbda, eps=-np.inf, maxiter=1, L=L_bt, eta=1.1,
+            W=W)
         B_f, err_f, L_f, t_f, M_f = _fast_prox_descent(
             R, B_f, lmbda, eps=-np.inf, maxiter=1, L=L_f, eta=1.1,
-            t=t_f, M0=M_f)
+            t=t_f, M0=M_f, W=W)
 
-        Cost[it, 0] = cost_function(B_basic, R, lmbda)
-        Cost[it, 1] = cost_function(B_decay_step, R, lmbda)
-        Cost[it, 2] = cost_function(B_bt, R, lmbda)
-        Cost[it, 3] = cost_function(B_f, R, lmbda)
+        Cost[it, 0] = cost_function(B_basic, R, lmbda, W=W)
+        Cost[it, 1] = cost_function(B_decay_step, R, lmbda, W=W)
+        Cost[it, 2] = cost_function(B_bt, R, lmbda, W=W)
+        Cost[it, 3] = cost_function(B_f, R, lmbda, W=W)
 
         GradRes[it, 0] = err_basic
         GradRes[it, 1] = err_decay_step
@@ -92,7 +96,7 @@ def convergence_example():
 
     axes[0].legend()
 
-    fig.suptitle("Prox Gradient for Time-Series LASSO "
+    fig.suptitle("Prox Gradient for Time-Series AdaLASSO "
                  "(n = {}, p = {})".format(n, p))
     plt.savefig("figures/convergence.png")
     plt.savefig("figures/convergence.pdf")
