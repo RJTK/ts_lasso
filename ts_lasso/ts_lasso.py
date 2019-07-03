@@ -1,29 +1,70 @@
 import numba
 import numpy as np
 
+from scipy.optimize import minimize_scalar
+
 from levinson.levinson import (compute_covariance,
                                whittle_lev_durb,
                                A_to_B)
 
 # TODO: Work out a proper stopping criteria
 
+# TODO: Set the regularization path to end at lmbda_max, i.e. when B = 0
+# TODO: there is a closed form expression that tells you apriori this value
+
 
 def adalasso_bic(X, p_max, nu=1.25):
+    """
+    Fit a VAR(p_max) model by optimizing BIC with a bisection method.
+    This will be faster than adalasso_bic_path, but it is possible it
+    will pick a bad regularization parameter.  It also (obviously)
+    won't return the BIC path.
+    """
+    T = len(X)
+    R = compute_covariance(X, p_max=p_max)
+    B0 = _wld_init(R)
+    W = 1. / np.abs(B0)**nu
+
+    def solve_cost(lmbda):
+        B_hat, _ = _solve_lasso(R, B0, lmbda, W, method="fista",
+                                eps=1e-4)
+        cost = cost_function(B_hat, R)
+        return B_hat, cost
+
+    def bic(lmbda):
+        B_hat, cost = solve_cost(lmbda)
+        return compute_bic(B_hat[None, ...], cost, T)[0]
+
+    res = minimize_scalar(bic, bounds=[1e-6, 1.0], method="bounded")
+    lmbda_star = res.x
+
+    B_star, cost_star = solve_cost(lmbda_star)
+    bic_star = bic(lmbda_star)
+    return B_star, cost_star, lmbda_star, bic_star
+
+
+def adalasso_bic_path(X, p_max, nu=1.25):
+    """
+    Fit a VAR(p_max) model by solving lasso and searching for optimal
+    regularizer by solving lasso along a regularization path, and then
+    using the BIC criterion.
+    """
     T = len(X)
     R = compute_covariance(X, p_max=p_max)
     B0 = _wld_init(R)
     W = 1. / np.abs(B0)**nu
     lmbda_path = np.logspace(-6, 1.0, 250)
 
-    B_path = _regularization_path(R, B0, lmbda_path, W)
+    # eps around 1e-3 to 1e-4 is fast and I think sufficient accuracy
+    B_path = _regularization_path(R, B0, lmbda_path, W,
+                                  method="fista", eps=1e-4)
     cost = cost_path(B_path, R)
 
     bic = compute_bic(B_path, cost, T)
     lmbda_i_opt = np.argmax(bic)
-    lmbda_star, B_star, cost_star = (lmbda_path[lmbda_i_opt],
-                                     B_path[lmbda_i_opt],
-                                     cost[lmbda_i_opt])
-    return B_star, cost_star, lmbda_star
+    B_star, cost_star = (B_path[lmbda_i_opt],
+                         cost[lmbda_i_opt])
+    return B_star, cost_star, lmbda_path, bic
 
 
 def compute_bic(B_path, cost, T):
