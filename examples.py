@@ -3,14 +3,15 @@ import matplotlib.pyplot as plt
 
 from ts_lasso.ts_lasso import (solve_lasso, _basic_prox_descent,
                                cost_function, regularization_path,
-                               cost_path, _backtracking_prox_descent)
+                               cost_path, _backtracking_prox_descent,
+                               _fast_prox_descent, _solve_lasso)
 from levinson.levinson import (whittle_lev_durb, compute_covariance,
                                A_to_B)
 
 
 def convergence_example():
     T = 1000
-    n = 30
+    n = 60
     p = 15
     X = np.random.normal(size=(T, n))
     X[1:] = 0.25 * np.random.normal(size=(T - 1, n)) + X[:-1, ::-1]
@@ -29,9 +30,19 @@ def convergence_example():
     B_decay_step = B0
     B_bt = B0
     L_bt = 0.01
+    B_f = B0
+    L_f = 0.01
+    t_f = 1.0
+    M_f = B0
+
+    B_star, _ = _solve_lasso(R, B0, lmbda, 1.0,
+                             step_rule=0.01, line_srch=1.1,
+                             method="fista", eps=-np.inf,
+                             maxiter=3000)
+    cost_star = cost_function(B_star, R, lmbda=lmbda, W=1.0)
 
     N_iters = 100
-    N_algs = 3
+    N_algs = 4
     GradRes = np.empty((N_iters, N_algs))
     Cost = np.empty((N_iters, N_algs))
     for it in range(N_iters):
@@ -43,15 +54,21 @@ def convergence_example():
             eps=-np.inf)
         B_bt, err_bt, L_bt = _backtracking_prox_descent(
             R, B_bt, lmbda, eps=-np.inf, maxiter=1, L=L_bt, eta=1.1)
+        B_f, err_f, L_f, t_f, M_f = _fast_prox_descent(
+            R, B_f, lmbda, eps=-np.inf, maxiter=1, L=L_f, eta=1.1,
+            t=t_f, M0=M_f)
 
         Cost[it, 0] = cost_function(B_basic, R, lmbda)
         Cost[it, 1] = cost_function(B_decay_step, R, lmbda)
         Cost[it, 2] = cost_function(B_bt, R, lmbda)
+        Cost[it, 3] = cost_function(B_f, R, lmbda)
 
         GradRes[it, 0] = err_basic
         GradRes[it, 1] = err_decay_step
         GradRes[it, 2] = err_bt
+        GradRes[it, 3] = err_f
 
+    Cost = Cost - cost_star
     fig, axes = plt.subplots(2, 1, sharex=True)
     axes[0].plot(GradRes[:, 0], label="ISTA (constant stepsize)",
                  linewidth=2)
@@ -59,20 +76,24 @@ def convergence_example():
                  linewidth=2)
     axes[0].plot(GradRes[:, 2], label="ISTA with Backtracking Line Search",
                  linewidth=2)
+    axes[0].plot(GradRes[:, 3], label="FISTA with Backtracking Line Search",
+                 linewidth=2)
 
     axes[1].plot(Cost[:, 0], linewidth=2)
     axes[1].plot(Cost[:, 1], linewidth=2)
     axes[1].plot(Cost[:, 2], linewidth=2)
+    axes[1].plot(Cost[:, 3], linewidth=2)
 
     axes[1].set_xlabel("Iteration Count")
     axes[0].set_ylabel("Log Gradient Residuals")
-    axes[1].set_ylabel("Log Cost Function")
+    axes[1].set_ylabel("Log (cost - cost_opt)")
     axes[0].set_yscale("log")
     axes[1].set_yscale("log")
 
     axes[0].legend()
 
-    fig.suptitle("Prox Gradient for Time-Series LASSO")
+    fig.suptitle("Prox Gradient for Time-Series LASSO "
+                 "(n = {}, p = {})".format(n, p))
     plt.savefig("figures/convergence.png")
     plt.savefig("figures/convergence.pdf")
     plt.show()

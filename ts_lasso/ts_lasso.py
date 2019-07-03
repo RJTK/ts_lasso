@@ -13,7 +13,8 @@ from levinson.levinson import (compute_covariance,
 
 
 def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
-                        line_srch=None, eps=1e-6, maxiter=100):
+                        line_srch=None, eps=1e-6, maxiter=100,
+                        method="ista"):
     """
     Given an iterable for lmbda, return the whole regularization path
     as a 4D array indexed as [lmbda, tau, i, j].
@@ -30,28 +31,9 @@ def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
 
     B_hat = np.empty((len(lmbda_path), p, n, n))
 
-    # TODO: Put all this crap in solve_lasso
-
-    if type(step_rule) is float:
-        if line_srch is None:
-            solver = lambda B_init, lmbda: _basic_prox_descent(
-                R, B0=B_init, lmbda=lmbda, ss=step_rule, eps=eps,
-                maxiter=maxiter, W=W)
-        elif type(line_srch) is float:
-            eta = line_srch
-            assert eta > 1
-
-            def solver(B_init, lmbda):
-                B_hat, eps, _ = _backtracking_prox_descent(
-                    R, B0=B_init, lmbda=lmbda, L=1. / step_rule, eps=eps,
-                    maxiter=maxiter, eta=eta, W=W)
-                return B_hat, eps
-        else:
-            raise NotImplementedError("line search method {} is not supported"
-                                      "".format(line_srch))
-    else:
-        raise NotImplementedError("step_rule {} is not supported"
-                                  "".format(step_rule))
+    solver = lambda B_init, lmbda: _solve_lasso(
+        R, B0, lmbda, W, step_rule=step_rule, line_srch=line_srch,
+        eps=eps, maxiter=maxiter, method=method)
 
     B_hat[-1] = B0
     for lmbda_i, lmbda in enumerate(list(lmbda_path)):
@@ -68,16 +50,49 @@ def cost_path(B_path, X, W=1.0):
 
 
 def solve_lasso(X, p, lmbda=0.0, W=1.0, step_rule=0.1,
-                line_srch=None, eps=1e-6, maxiter=100):
+                line_srch=None, eps=1e-6, maxiter=100,
+                method="ista"):
     R = compute_covariance(X, p_max=p)
     B0 = _wld_init(R)
+    return _solve_lasso(R, B0, lmbda, W, step_rule=step_rule,
+                        line_srch=line_srch, eps=eps, maxiter=maxiter,
+                        method="ista")
 
-    if type(step_rule) is float:
-        B_hat, res = _basic_prox_descent(R, B0=B0, lmbda=lmbda,
-                                         ss=step_rule, eps=eps,
-                                         maxiter=maxiter, W=W)
+
+def _solve_lasso(R, B0, lmbda, W, step_rule=0.1,
+                 line_srch=None, eps=1e-6, maxiter=100,
+                 method="ista"):
+    if method == "ista":
+        if line_srch is None:
+            B_hat, res = _basic_prox_descent(
+                R, B0=B0, lmbda=lmbda, ss=step_rule, eps=eps,
+                maxiter=maxiter, W=W)
+        elif type(line_srch) is float:
+            eta = line_srch
+            assert eta > 1
+
+            B_hat, res, _ = _backtracking_prox_descent(
+                R, B0=B0, lmbda=lmbda, W=W, eps=eps,
+                maxiter=maxiter, L=1. / step_rule, eta=eta)
+        else:
+            raise NotImplementedError("line_srch {} is not supported"
+                                      "".format(line_srch))
+    elif method == "fista":
+        if line_srch is None:
+            B_hat, res, _, _, _ = _fast_prox_descent(
+                R, B0, lmbda=lmbda, W=W, eps=eps, maxiter=maxiter,
+                L=1. / step_rule, eta=1.1)
+        elif type(line_srch) is float:
+            eta = line_srch
+            assert eta > 1
+            B_hat, res, _, _, _ = _fast_prox_descent(
+                R, B0, lmbda=lmbda, W=W, eps=eps, maxiter=maxiter,
+                L=1. / step_rule, eta=eta)
+        else:
+            raise NotImplementedError("Line search {} is not available"
+                                      "".format(line_srch))
     else:
-        raise NotImplementedError("Only constant stepsize is implemented.")
+        raise NotImplementedError("Method {} not available.".format(method))
     return B_hat, res
 
 
@@ -97,7 +112,7 @@ def _wld_init(R, sigma=0.1):
 def _basic_prox_descent(R, B0, lmbda, ss=0.1, W=1.0, eps=1e-6,
                         maxiter=100):
     """
-    Most basic constant stepsize proximal gradient scheme.
+    ISTA with a constant step size.
     """
     B = B0
     res = np.inf
@@ -117,7 +132,8 @@ def _basic_prox_descent(R, B0, lmbda, ss=0.1, W=1.0, eps=1e-6,
 def _backtracking_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
                                maxiter=100, L=1.0, eta=1.1):
     """
-    Most basic constant stepsize proximal gradient scheme.
+    ISTA with backtracking line search for automatically
+    tuning the stepsize.
     """
     B = B0
     res = np.inf
@@ -133,6 +149,40 @@ def _backtracking_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
 
 
 @numba.jit(nopython=True, cache=True)
+def _fast_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
+                       maxiter=100, L=1.0, eta=1.1,
+                       t=1.0, M0=None):
+    """
+    This if FISTA.
+    """
+    B = B0
+    if M0 is not None:
+        M = M0  # Momentum
+    else:
+        M = B0
+
+    res = np.inf
+    for it in range(maxiter):
+        # TODO: I should only calculate this every 10 or something
+        # TODO: iterations cause the gradient doesn't get reused.
+        res_vec = _compute_gradient_residual(B, cost_gradient(B, R),
+                                             lmbda, W)
+        res = np.max(np.abs(res_vec))
+        if res < eps:
+            return B, res, L, t, M
+
+        g = cost_gradient(M, R)
+        B_next, L = _line_search(M, R, g, lmbda, W, L, eta)
+        t_next = 0.5 * (1 + np.sqrt(1 + 4 * t**2))
+        M = B_next + ((t - 1) / (t_next)) * (B_next - B)
+
+        t = t_next
+        B = B_next
+
+    return B, res, L, t, M
+
+
+@numba.jit(nopython=True, cache=True)
 def _line_search(B, R, g, lmbda, W, L, eta):
     Q0 = cost_function(B, R, lmbda=0.0, W=1.0) - np.sum(B * g)
 
@@ -140,7 +190,7 @@ def _line_search(B, R, g, lmbda, W, L, eta):
         B_hat = soft_threshold(B - g / L, lmbda / L, W)
         cost = cost_function(B_hat, R, lmbda, W)
         Q = (Q0 + np.sum(B_hat * g) + 0.5 * L * np.sum((B - B_hat)**2) +
-             lmbda * l1_norm(B_hat))
+             lmbda * l1_norm(W * B_hat))
         if cost <= Q:
             break
         else:
@@ -182,7 +232,7 @@ def cost_function(B, R, lmbda=0.0, W=1.0):
     """
     Cost function applied to the covariance sequence R(tau)
     """
-    p, _, _ = B.shape
+    p = len(B)
     cost = np.trace(R[0])
     for tau in range(1, p + 1):
         Z = -2 * R[tau]

@@ -275,12 +275,170 @@ class TestProxDescent(unittest.TestCase):
             R, X = self._create_case(p, T=1000)
             W = np.random.normal(size=(p, n, n))
             B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
-                                     maxiter=250, eps=1e-5)
+                                     maxiter=250, eps=-np.inf)
             self.assertTrue(eps > 0)
             J_star = exact_cost_function(B_hat, X, lmbda=lmbda, W=W)
             for _ in range(10):
                 J = exact_cost_function(
                     B_hat + 0.025 * np.random.normal(size=B_hat.shape),
                     X, lmbda=lmbda, W=W)
+                self.assertTrue(J_star < J)
+        return
+
+
+class TestISTABacktracking(unittest.TestCase):
+    def setUp(self):
+        np.random.seed(0)
+        return
+
+    def _create_case(self, p=1, T=300):
+        n = 2
+        X = np.random.normal(size=(T, n))
+        X[1:] = X[:-1] + 0.5 * np.random.normal(size=(T - 1, n))
+        R = compute_covariance(X, p_max=p)
+        return R, X
+
+    def test001(self):
+        p = 1
+        R, X = self._create_case(p, T=1000)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0, eps=-np.inf,
+                                 maxiter=1000, step_rule=0.1,
+                                 line_srch=1.1)
+        A_hat = B_to_A(B_hat)
+        YW = yule_walker(A_hat, R)
+
+        np.testing.assert_almost_equal(YW[1], np.zeros_like(YW[1]))
+        self.assertAlmostEqual(eps, 0.0)
+        return
+
+    def test002(self):
+        p = 5
+        R, X = self._create_case(p)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0,
+                                 eps=-np.inf, maxiter=1000,
+                                 line_srch=1.1)
+        A_hat = B_to_A(B_hat)
+        YW = yule_walker(A_hat, R)
+
+        for tau in range(1, p + 1):
+            np.testing.assert_almost_equal(YW[tau],
+                                           np.zeros_like(YW[tau]))
+        self.assertAlmostEqual(eps, 0.0)
+        return
+
+    def test003(self):
+        p = 5
+        lmbda = 0.05
+
+        for _ in range(10):
+            R, X = self._create_case(p, T=1000)
+            B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda,
+                                     maxiter=250, eps=-np.inf,
+                                     line_srch=1.1)
+            self.assertTrue(eps > 0)
+            J_star = exact_cost_function(B_hat, X, lmbda=lmbda)
+            for _ in range(10):
+                J = exact_cost_function(
+                    B_hat + 0.025 * np.random.normal(size=B_hat.shape),
+                    X, lmbda=lmbda)
+                self.assertTrue(J_star < J)
+        return
+
+    def test004(self):
+        p = 5
+        n = 2
+        lmbda = 0.01
+
+        for _ in range(10):
+            R, X = self._create_case(p, T=1000)
+            W = np.random.normal(size=(p, n, n))
+            B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
+                                     maxiter=250, eps=-np.inf,
+                                     line_srch=1.1)
+            self.assertTrue(eps > 0)
+            J_star = cost_function(B_hat, R, lmbda=lmbda, W=W)
+            for _ in range(10):
+                J = cost_function(
+                    B_hat + 0.025 * np.random.normal(size=B_hat.shape),
+                    R, lmbda=lmbda, W=W)
+                self.assertTrue(J_star < J)
+        return
+
+
+class TestFISTA(unittest.TestCase):
+    def setUp(self):
+        np.random.seed(0)
+        return
+
+    def _create_case(self, p=1, T=300):
+        n = 2
+        X = np.random.normal(size=(T, n))
+        X[1:] = X[:-1] + 0.5 * np.random.normal(size=(T - 1, n))
+        R = compute_covariance(X, p_max=p)
+        return R, X
+
+    def test001(self):
+        p = 1
+        R, X = self._create_case(p, T=1000)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0, eps=-np.inf,
+                                 maxiter=1000, step_rule=0.1,
+                                 line_srch=1.1, method="fista")
+        A_hat = B_to_A(B_hat)
+        YW = yule_walker(A_hat, R)
+
+        np.testing.assert_almost_equal(YW[1], np.zeros_like(YW[1]))
+        self.assertAlmostEqual(eps, 0.0)
+        return
+
+    def test002(self):
+        p = 5
+        R, X = self._create_case(p)
+        B_hat, eps = solve_lasso(X, p=p, lmbda=0.0,
+                                 eps=-np.inf, maxiter=1000,
+                                 line_srch=1.1, method="fista")
+        A_hat = B_to_A(B_hat)
+        YW = yule_walker(A_hat, R)
+
+        for tau in range(1, p + 1):
+            np.testing.assert_almost_equal(YW[tau],
+                                           np.zeros_like(YW[tau]))
+        self.assertAlmostEqual(eps, 0.0)
+        return
+
+    def test003(self):
+        p = 5
+        lmbda = 0.05
+
+        for _ in range(10):
+            R, X = self._create_case(p, T=1000)
+            B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda,
+                                     maxiter=250, eps=-np.inf,
+                                     line_srch=1.1, method="fista")
+            self.assertTrue(eps > 0)
+            J_star = exact_cost_function(B_hat, X, lmbda=lmbda)
+            for _ in range(10):
+                J = exact_cost_function(
+                    B_hat + 0.025 * np.random.normal(size=B_hat.shape),
+                    X, lmbda=lmbda)
+                self.assertTrue(J_star < J)
+        return
+
+    def test004(self):
+        p = 5
+        n = 2
+        lmbda = 0.01
+
+        for _ in range(10):
+            R, X = self._create_case(p, T=1000)
+            W = np.random.normal(size=(p, n, n))
+            B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
+                                     maxiter=250, eps=-np.inf,
+                                     line_srch=1.1, method="fista")
+            self.assertTrue(eps > 0)
+            J_star = cost_function(B_hat, R, lmbda=lmbda, W=W)
+            for _ in range(10):
+                J = cost_function(
+                    B_hat + 0.025 * np.random.normal(size=B_hat.shape),
+                    R, lmbda=lmbda, W=W)
                 self.assertTrue(J_star < J)
         return
