@@ -493,7 +493,7 @@ class TestBICSearchMethods(unittest.TestCase):
             B_star, cost_star, lmbda_star, bic_star = adalasso_bic(X, 15)
             B_star_from_path, cost_star_from_path, lmbda_path, bic_path =\
                 adalasso_bic_path(X, 15)
-            np.testing.assert_allclose(B_star, B_star_from_path, rtol=1e-1)
+            np.testing.assert_allclose(B_star, B_star_from_path, atol=0.1)
             self.assertAlmostEqual(cost_star, cost_star_from_path, places=2,
                                    msg="cost does not match")
             self.assertAlmostEqual(bic_star, np.max(bic_path), places=2,
