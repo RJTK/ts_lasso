@@ -192,7 +192,7 @@ def _solve_lasso(R, B0, lmbda, W, step_rule=0.1,
             maxiter=maxiter, L=1. / step_rule, eta=eta)
     elif method == "fista":
         B_hat, res, _, _, _ = _fast_prox_descent(
-            R, B0, lmbda=lmbda, W=W, eps=eps, maxiter=maxiter,
+            R, B0=B0, lmbda=lmbda, W=W, eps=eps, maxiter=maxiter,
             L=1. / step_rule, eta=eta)
 
     else:
@@ -257,8 +257,11 @@ def _fast_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
                        maxiter=100, L=1.0, eta=1.1,
                        t=1.0, M0=None):
     """
-    This if FISTA.
+    This is FISTA.
     """
+    # TODO: There seems to be some problem with numba when
+    # TODO: leaving M0=None ??  For now I just always pass
+    # TODO: in M0 = B0...
     B = B0
     if M0 is not None:
         M = M0  # Momentum
