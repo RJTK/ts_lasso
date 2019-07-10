@@ -7,9 +7,8 @@ from levinson.levinson import (yule_walker, A_to_B, B_to_A,
 from ts_lasso.ts_lasso import (
     soft_threshold, predict, adalasso_bic, adalasso_bic_path,
     exact_cost_function, cost_function,
-    cost_gradient,
-    compute_covariance, solve_lasso,
-    )
+    cost_gradient, compute_covariance, solve_lasso,
+    fit_VAR)
 
 
 class TestMain(unittest.TestCase):
@@ -518,4 +517,10 @@ class TestBICSearchMethods(unittest.TestCase):
                             "costs differ greatly")
             self.assertTrue(np.abs(bic_star - np.max(bic_path)) < 1,
                             "bic differs greatly")
+        return
+
+    def test005(self):
+        # Only checks that it runs.
+        R, X = self._create_big_case()
+        B_star, cost_star, lmbda_star, bic_star = fit_VAR(X, 10)
         return
