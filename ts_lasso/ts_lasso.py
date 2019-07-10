@@ -16,7 +16,7 @@ from levinson.levinson import (compute_covariance,
 DEFAULT_ETA = 1.1
 
 
-def fit_VAR(X, p_max, nu=1.25):
+def fit_VAR(X, p_max, nu=1.25, eps=1e-3):
     T = len(X)
     R = compute_covariance(X, p_max=p_max)
 
@@ -25,7 +25,8 @@ def fit_VAR(X, p_max, nu=1.25):
     lmbda_star = None
     B_star = None
     for p in range(1, p_max + 1):
-        B, cost, lmbda, bic = _adalasso_bic(R[:p + 1], T, p, nu, lmbda_max=1.0)
+        B, cost, lmbda, bic = _adalasso_bic(R[:p + 1], T, p, nu,
+                                            lmbda_max=1.0, eps=eps)
         if bic > bic_star:
             B_star = B
             cost_star = cost
@@ -52,13 +53,13 @@ def adalasso_bic(X, p, nu=1.25, lmbda_max=1.0):
     return _adalasso_bic(R, T, p, nu, lmbda_max)
 
 
-def _adalasso_bic(R, T, p, nu, lmbda_max):
+def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
     B0 = _wld_init(R)
     W = 1. / np.abs(B0)**nu
 
     def solve_cost(lmbda):
         B_hat, _ = _solve_lasso(R, B0, lmbda, W, method="fista",
-                                eps=1e-3)
+                                eps=eps)
         cost = cost_function(B_hat, R)
         return B_hat, cost
 
@@ -67,8 +68,16 @@ def _adalasso_bic(R, T, p, nu, lmbda_max):
         return -compute_bic(B_hat[None, ...], cost, T)[0]
 
     # This meta-optimization step does not need to be very accurate
-    lmbda_star, _bic_star, err, _ = fminbound(bic, x1=0, x2=lmbda_max,
-                                              xtol=1e-2, full_output=True)
+    # I need to be careful to capture the right lmbda_max though.
+    lmbda_star = np.inf
+    while True:
+        lmbda_star, _bic_star, err, _ = fminbound(
+            bic, x1=0,x2=lmbda_max, xtol=1e-2, full_output=True)
+        if 1.01 * lmbda_star > lmbda_max:
+            lmbda_max = 3 * lmbda_max
+        else:
+            break
+
     if err:
         warnings.warn("fminbound exceeded maximum iterations")
     bic_star = -1 * _bic_star
