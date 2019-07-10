@@ -4,10 +4,12 @@ import numpy as np
 from levinson.levinson import (yule_walker, A_to_B, B_to_A,
                                whittle_lev_durb)
 
-from ts_lasso.ts_lasso import (soft_threshold, predict,
-                               exact_cost_function, cost_function,
-                               cost_gradient,
-                               compute_covariance, solve_lasso)
+from ts_lasso.ts_lasso import (
+    soft_threshold, predict, adalasso_bic, adalasso_bic_path,
+    exact_cost_function, cost_function,
+    cost_gradient,
+    compute_covariance, solve_lasso,
+    )
 
 
 class TestMain(unittest.TestCase):
@@ -441,4 +443,79 @@ class TestFISTA(unittest.TestCase):
                     B_hat + 0.025 * np.random.normal(size=B_hat.shape),
                     R, lmbda=lmbda, W=W)
                 self.assertTrue(J_star < J)
+        return
+
+
+class TestBICSearchMethods(unittest.TestCase):
+    def SetUp(self):
+        np.random.seed(0)
+        return
+
+    def _create_case(self, p=2, T=300):
+        n = 4
+        X = np.random.normal(size=(T, n))
+        X[1:] = X[:-1] + 0.5 * np.random.normal(size=(T - 1, n))
+        X[2:, 0] = X[:-2, -1] + 0.5 * np.random.normal(size=T - 2)
+        X[1:, 1] = X[:-1, 3] + 0.5 * np.random.normal(size=T - 1)
+        R = compute_covariance(X, p_max=p)
+        return R, X
+
+    def _create_big_case(self, p=5, T=500):
+        n = 30
+        X = np.random.normal(size=(T, n))
+        X[1:] = X[:-1] + 0.5 * np.random.normal(size=(T - 1, n))
+        X[2:, 0] = X[:-2, -1] + 0.5 * np.random.normal(size=T - 2)
+        X[1:, 1] = X[:-1, 3] + 0.5 * np.random.normal(size=T - 1)
+
+        L = np.random.normal(size=(n, n))
+
+        L[2, :] = 0
+        L[12, :] = 0
+        L[9, :] = 0
+
+        X[2:] = X[:-2] @ L
+
+        R = compute_covariance(X, p_max=p)
+        return R, X
+
+    def test001(self):
+        R, X = self._create_case(p=2, T=300)
+        adalasso_bic(X, 2)
+        return
+
+    def test002(self):
+        R, X = self._create_case(p=2, T=300)
+        adalasso_bic_path(X, 2)
+        return
+
+    def test003(self):
+        for _ in range(10):
+            R, X = self._create_case(p=2, T=300)
+            B_star, cost_star, lmbda_star, bic_star = adalasso_bic(X, 15)
+            B_star_from_path, cost_star_from_path, lmbda_path, bic_path =\
+                adalasso_bic_path(X, 15)
+            np.testing.assert_allclose(B_star, B_star_from_path, rtol=1e-1)
+            self.assertAlmostEqual(cost_star, cost_star_from_path, places=2,
+                                   msg="cost does not match")
+            self.assertAlmostEqual(bic_star, np.max(bic_path), places=2,
+                                   msg="bic does not match")
+
+            # lmbda can be quite different but solutions don't change significantly
+            # self.assertAlmostEqual(lmbda_star, lmbda_path[np.argmax(bic_path)],
+            #                        places=2, msg="lmbda does not match")
+        return
+
+    def test004(self):
+        for _ in range(10):
+            R, X = self._create_big_case()
+            B_star, cost_star, lmbda_star, bic_star = adalasso_bic(X, 4)
+            B_star_from_path, cost_star_from_path, lmbda_path, bic_path =\
+                adalasso_bic_path(X, 4)
+
+            self.assertTrue(np.mean((B_star - B_star_from_path)**2 < 0.05),
+                            "Solutions differ greatly")
+            self.assertTrue(np.abs(cost_star - cost_star_from_path) < 1,
+                            "costs differ greatly")
+            self.assertTrue(np.abs(bic_star - np.max(bic_path)) < 1,
+                            "bic differs greatly")
         return
