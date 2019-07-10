@@ -274,7 +274,7 @@ class TestProxDescent(unittest.TestCase):
 
         for _ in range(10):
             R, X = self._create_case(p, T=1000)
-            W = np.random.normal(size=(p, n, n))
+            W = np.abs(np.random.normal(size=(p, n, n)))
             B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
                                      maxiter=250, eps=-np.inf)
             self.assertTrue(eps > 0)
@@ -352,7 +352,7 @@ class TestISTABacktracking(unittest.TestCase):
 
         for _ in range(10):
             R, X = self._create_case(p, T=1000)
-            W = np.random.normal(size=(p, n, n))
+            W = np.abs(np.random.normal(size=(p, n, n)))
             B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
                                      maxiter=250, eps=-np.inf,
                                      line_srch=1.1)
@@ -431,7 +431,7 @@ class TestFISTA(unittest.TestCase):
 
         for _ in range(10):
             R, X = self._create_case(p, T=1000)
-            W = np.random.normal(size=(p, n, n))
+            W = np.abs(np.random.normal(size=(p, n, n)))
             B_hat, eps = solve_lasso(X, p=p, lmbda=lmbda, W=W,
                                      maxiter=250, eps=-np.inf,
                                      line_srch=1.1, method="fista")
