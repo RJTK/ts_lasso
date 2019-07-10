@@ -2,7 +2,7 @@ from distutils.core import setup
 
 _VERSION = "0.4.0"
 
-with open("README", "r") as readme:
+with open("README.md", "r") as readme:
     long_desc = readme.read()
 
 
