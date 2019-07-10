@@ -16,7 +16,7 @@ from levinson.levinson import (compute_covariance,
 DEFAULT_ETA = 1.1
 
 
-def fit_VAR(X, p_max, nu=1.25, eps=1e-3):
+def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
     T = len(X)
     R = compute_covariance(X, p_max=p_max)
 
@@ -25,8 +25,18 @@ def fit_VAR(X, p_max, nu=1.25, eps=1e-3):
     lmbda_star = None
     B_star = None
     for p in range(1, p_max + 1):
-        B, cost, lmbda, bic = _adalasso_bic(R[:p + 1], T, p, nu,
-                                            lmbda_max=1.0, eps=eps)
+        # Fit a bunch of VAR models
+
+        if full_path:
+            B, cost, lmbda_path, bic_path = _adalasso_bic_path(
+                R, T, p=p_max, nu=nu, lmbda_path=np.linspace(0, 1, 250), eps=eps)
+            lmbda_i_opt = np.argmax(bic_path)
+            bic = bic_path[lmbda_i_opt]
+            lmbda = lmbda_path[lmbda_i_opt]
+        else:
+            B, cost, lmbda, bic = _adalasso_bic(R[:p + 1], T, p, nu,
+                                                lmbda_max=1.0, eps=eps)
+
         if bic > bic_star:
             B_star = B
             cost_star = cost
@@ -86,7 +96,8 @@ def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
     return B_star, cost_star, lmbda_star, bic_star
 
 
-def adalasso_bic_path(X, p, nu=1.25, lmbda_path=np.logspace(-6, 1.0, 250)):
+def adalasso_bic_path(X, p, nu=1.25, lmbda_path=np.logspace(-6, 1.0, 250),
+                      eps=1e-3):
     """
     Fit a VAR(p) model by solving lasso and searching for optimal
     regularizer by solving lasso along a regularization path, and then
@@ -94,12 +105,16 @@ def adalasso_bic_path(X, p, nu=1.25, lmbda_path=np.logspace(-6, 1.0, 250)):
     """
     T = len(X)
     R = compute_covariance(X, p_max=p)
+    return _adalasso_bic_path(R, T, p, nu=nu, lmbda_path=lmbda_path, eps=eps)
+
+
+def _adalasso_bic_path(R, T, p, nu, lmbda_path, eps=1e-3):
     B0 = _wld_init(R)
     W = 1. / np.abs(B0)**nu
 
     # eps around 1e-3 to 1e-4 is fast and I think sufficient accuracy
     B_path = _regularization_path(R, B0, lmbda_path, W,
-                                  method="fista", eps=1e-4)
+                                  method="fista", eps=eps)
     cost = cost_path(B_path, R)
 
     bic = compute_bic(B_path, cost, T)
