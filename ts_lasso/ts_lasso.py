@@ -240,6 +240,13 @@ def _wld_init(R, sigma=0.1):
 
 
 def dither(B0, sigma=0.1):
+    """
+    Adds some noise to the array B0.  It seems reasonable to initialize
+    the algorithm with B0 = dither(_wld_init(R)) since if we just use
+    B0 = _wld_init(R) we will be starting at a point with 0 cost gradient.
+    However, it is NOT wise to use the dithered B0 for the weight matrix,
+    for obvious reasons.
+    """
     return B0 + sigma * np.random.normal(size=B0.shape)
 
 
