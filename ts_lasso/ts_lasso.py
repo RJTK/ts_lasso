@@ -14,6 +14,7 @@ from levinson.levinson import (compute_covariance,
 # TODO: there is a closed form expression that tells you apriori this value
 
 DEFAULT_ETA = 1.1
+MAXITER = 100000
 
 
 def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
@@ -29,7 +30,8 @@ def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
 
         if full_path:
             B, cost, lmbda_path, bic_path = _adalasso_bic_path(
-                R, T, p=p_max, nu=nu, lmbda_path=np.linspace(0, 1, 250), eps=eps)
+                R, T, p=p_max, nu=nu, lmbda_path=np.linspace(0, 1, 250),
+                eps=eps)
             lmbda_i_opt = np.argmax(bic_path)
             bic = bic_path[lmbda_i_opt]
             lmbda = lmbda_path[lmbda_i_opt]
@@ -66,6 +68,7 @@ def adalasso_bic(X, p, nu=1.25, lmbda_max=1.0):
 def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
     B0 = _wld_init(R)
     W = 1. / np.abs(B0)**nu
+    B0 = dither(B0)
 
     def solve_cost(lmbda):
         B_hat, _ = _solve_lasso(R, B0, lmbda, W, method="fista",
@@ -82,7 +85,7 @@ def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
     lmbda_star = np.inf
     while True:
         lmbda_star, _bic_star, err, _ = fminbound(
-            bic, x1=0,x2=lmbda_max, xtol=1e-2, full_output=True)
+            bic, x1=0, x2=lmbda_max, xtol=1e-2, full_output=True)
         if 1.01 * lmbda_star > lmbda_max:
             lmbda_max = 3 * lmbda_max
         else:
@@ -111,6 +114,7 @@ def adalasso_bic_path(X, p, nu=1.25, lmbda_path=np.logspace(-6, 1.0, 250),
 def _adalasso_bic_path(R, T, p, nu, lmbda_path, eps=1e-3):
     B0 = _wld_init(R)
     W = 1. / np.abs(B0)**nu
+    B0 = dither(B0)
 
     # eps around 1e-3 to 1e-4 is fast and I think sufficient accuracy
     B_path = _regularization_path(R, B0, lmbda_path, W,
@@ -131,7 +135,7 @@ def compute_bic(B_path, cost, T):
 
 
 def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
-                        line_srch=None, eps=1e-6, maxiter=100,
+                        line_srch=None, eps=1e-6, maxiter=MAXITER,
                         method="ista"):
     """
     Given an iterable for lmbda, return the whole regularization path
@@ -143,14 +147,14 @@ def regularization_path(X, p, lmbda_path, W=1.0, step_rule=0.1,
     Must have L0 > 0, eta > 1
     """
     R = compute_covariance(X, p_max=p)
-    B0 = _wld_init(R)
+    B0 = dither(_wld_init(R))
     return _regularization_path(R, B0, lmbda_path, W=W, step_rule=step_rule,
                                 line_srch=line_srch, eps=eps, maxiter=maxiter,
                                 method=method)
 
 
 def _regularization_path(R, B0, lmbda_path, W=1.0, step_rule=0.1,
-                         line_srch=None, eps=1e-6, maxiter=100,
+                         line_srch=None, eps=1e-6, maxiter=MAXITER,
                          method="ista"):
     p, n, _ = B0.shape
 
@@ -188,18 +192,18 @@ def exact_cost_path(B_path, X):
 
 
 def solve_lasso(X, p, lmbda=0.0, W=1.0, step_rule=0.1,
-                line_srch=None, eps=1e-6, maxiter=100,
+                line_srch=None, eps=1e-6, maxiter=MAXITER,
                 method="ista"):
     assert np.all(W >= 0), "W must be non-negative"
     R = compute_covariance(X, p_max=p)
-    B0 = _wld_init(R)
+    B0 = dither(_wld_init(R))
     return _solve_lasso(R, B0, lmbda, W, step_rule=step_rule,
                         line_srch=line_srch, eps=eps, maxiter=maxiter,
                         method="ista")
 
 
 def _solve_lasso(R, B0, lmbda, W, step_rule=0.1,
-                 line_srch=None, eps=1e-6, maxiter=100,
+                 line_srch=None, eps=1e-6, maxiter=MAXITER,
                  method="ista"):
     if line_srch is None:
         eta = DEFAULT_ETA
@@ -232,13 +236,16 @@ def _wld_init(R, sigma=0.1):
     """
     A, _, _ = whittle_lev_durb(R)
     B0 = A_to_B(A)
-    B0 = B0 + sigma * np.random.normal(size=B0.shape)
     return B0
+
+
+def dither(B0, sigma=0.1):
+    return B0 + sigma * np.random.normal(size=B0.shape)
 
 
 @numba.jit(nopython=True, cache=True)
 def _basic_prox_descent(R, B0, lmbda, ss=0.1, W=1.0, eps=1e-6,
-                        maxiter=100):
+                        maxiter=MAXITER):
     """
     ISTA with a constant step size.
     """
@@ -258,7 +265,7 @@ def _basic_prox_descent(R, B0, lmbda, ss=0.1, W=1.0, eps=1e-6,
 
 @numba.jit(nopython=True, cache=True)
 def _backtracking_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
-                               maxiter=100, L=1.0, eta=1.1):
+                               maxiter=MAXITER, L=1.0, eta=1.1):
     """
     ISTA with backtracking line search for automatically
     tuning the stepsize.
@@ -278,7 +285,7 @@ def _backtracking_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
 
 @numba.jit(nopython=True, cache=True)
 def _fast_prox_descent(R, B0, lmbda, W=1.0, eps=1e-6,
-                       maxiter=100, L=1.0, eta=1.1,
+                       maxiter=MAXITER, L=1.0, eta=1.1,
                        t=1.0, M0=None):
     """
     This is FISTA.
