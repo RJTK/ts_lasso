@@ -14,7 +14,7 @@ from levinson.levinson import (compute_covariance,
 # TODO: there is a closed form expression that tells you apriori this value
 
 DEFAULT_ETA = 1.1
-MAXITER = 100000
+MAXITER = 50000
 
 
 def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
@@ -83,7 +83,10 @@ def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
     # This meta-optimization step does not need to be very accurate
     # I need to be careful to capture the right lmbda_max though.
     lmbda_star = np.inf
-    while True:
+    _bic_star_prev = -np.inf
+    _bic_star = np.inf
+    while _bic_star > _bic_star_prev:  # To ensure lmbda_max doesn't run away
+        _bic_star_prev = _bic_star
         lmbda_star, _bic_star, err, _ = fminbound(
             bic, x1=0, x2=lmbda_max, xtol=1e-2, full_output=True)
         if 1.01 * lmbda_star > lmbda_max:
@@ -347,6 +350,10 @@ def _line_search(B, R, g, lmbda, W, L, eta):
             eta *= 1.5
         if it == 2 * max_iter // 3:
             eta *= 1.5
+        if L == np.inf:
+            print("WARNING: Line search failed with L == inf "
+                  "and lmbda = ", lmbda)
+            return B_hat, L
 
     if it >= max_iter:
         print("WARNING: Line search exceeded", max_iter, "iterations and "
