@@ -15,12 +15,13 @@ from sklearn.metrics import matthews_corrcoef
 
 
 def cvg_example():
-    T_max = 5000
+    nu = 1.25
     n = 6
     p = 2
     p_max = 2 * p
     T_iters = [150, 300, 500, 1000, 2000,
                5000, 15000, 55000]
+    T_max = max(T_iters) + 1
     T_trials = len(T_iters)
     N_iters = 100
 
@@ -30,7 +31,7 @@ def cvg_example():
     for N_it in range(N_iters):
         X, B, G = generate_data(T_max, n=n, p=p, q=0.5)
         for T_it, T in enumerate(T_iters):
-            B_hat, _, _, _ = fit_VAR(X[:T, :], p_max=p_max)
+            B_hat, _, _, _ = fit_VAR(X[:T, :], p_max=p_max, nu=nu)
             p_hat = B_hat.shape[0]
             B_true = np.zeros_like(B_hat)
             B_true[:p, ...] = B
