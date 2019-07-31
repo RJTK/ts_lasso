@@ -27,8 +27,12 @@ def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
     B_star = None
     for p in range(1, p_max + 1):
         # Fit a bunch of VAR models
-
+        # TODO:
+        # This is a forward search on the model order
+        # There is probably a superior regularization scheme to accomplish
+        # similar behaviour, but this suffices for now.
         if full_path:
+            # TODO: Incorporate lmbda_max somehow instead of just going from 0 to 1.
             B, cost, lmbda_path, bic_path = _adalasso_bic_path(
                 R, T, p=p_max, nu=nu, lmbda_path=np.linspace(0, 1, 250),
                 eps=eps)
@@ -37,7 +41,7 @@ def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
             lmbda = lmbda_path[lmbda_i_opt]
         else:
             B, cost, lmbda, bic = _adalasso_bic(R[:p + 1], T, p, nu,
-                                                lmbda_max=1.0, eps=eps)
+                                                lmbda_max=None, eps=eps)
 
         if bic > bic_star:
             B_star = B
@@ -53,7 +57,7 @@ def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
     return B_star, cost_star, lmbda_star, bic_star
 
 
-def adalasso_bic(X, p, nu=1.25, lmbda_max=1.0):
+def adalasso_bic(X, p, nu=1.25, lmbda_max=None):
     """
     Fit a VAR(p) model by optimizing BIC with a bisection method.
     This will be faster than adalasso_bic_path, but it is possible it
@@ -65,10 +69,13 @@ def adalasso_bic(X, p, nu=1.25, lmbda_max=1.0):
     return _adalasso_bic(R, T, p, nu, lmbda_max)
 
 
-def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
+def _adalasso_bic(R, T, p, nu, lmbda_max=None, eps=1e-3):
     B0 = _wld_init(R)
     W = 1. / np.abs(B0)**nu
     B0 = dither(B0)
+
+    if lmbda_max is None:
+        lmbda_max = get_lmbda_max(R, W)
 
     def solve_cost(lmbda):
         B_hat, _ = _solve_lasso(R, B0, lmbda, W, method="fista",
@@ -80,19 +87,8 @@ def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
         B_hat, cost = solve_cost(lmbda)
         return -compute_bic(B_hat[None, ...], cost, T)[0]
 
-    # This meta-optimization step does not need to be very accurate
-    # I need to be careful to capture the right lmbda_max though.
-    lmbda_star = np.inf
-    _bic_star_prev = -np.inf
-    _bic_star = np.inf
-    while _bic_star > _bic_star_prev:  # To ensure lmbda_max doesn't run away
-        _bic_star_prev = _bic_star
-        lmbda_star, _bic_star, err, _ = fminbound(
-            bic, x1=0, x2=lmbda_max, xtol=1e-2, full_output=True)
-        if 1.01 * lmbda_star > lmbda_max:
-            lmbda_max = 3 * lmbda_max
-        else:
-            break
+    lmbda_star, _bic_star, err, _ = fminbound(
+        bic, x1=0, x2=lmbda_max, xtol=1e-2, full_output=True)
 
     if err:
         warnings.warn("fminbound exceeded maximum iterations")
@@ -100,6 +96,13 @@ def _adalasso_bic(R, T, p, nu, lmbda_max, eps=1e-3):
 
     B_star, cost_star = solve_cost(lmbda_star)
     return B_star, cost_star, lmbda_star, bic_star
+
+
+def get_lmbda_max(R, W=None):
+    if W is None:
+        return np.max(np.abs(R[1:]))
+    else:
+        return np.max(np.abs(R[1:]) / W)
 
 
 def adalasso_bic_path(X, p, nu=1.25, lmbda_path=np.logspace(-6, 1.0, 250),

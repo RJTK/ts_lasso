@@ -8,7 +8,8 @@ from ts_lasso.ts_lasso import (
     soft_threshold, predict, adalasso_bic, adalasso_bic_path,
     exact_cost_function, cost_function,
     cost_gradient, compute_covariance, solve_lasso,
-    fit_VAR)
+    fit_VAR, _wld_init, dither, get_lmbda_max,
+    _solve_lasso)
 
 
 class TestMain(unittest.TestCase):
@@ -524,3 +525,53 @@ class TestBICSearchMethods(unittest.TestCase):
         R, X = self._create_big_case()
         B_star, cost_star, lmbda_star, bic_star = fit_VAR(X, 10)
         return
+
+    def test_lmbda_max001(self):
+        nu = 1.25
+        eps = 1e-4
+
+        for it in range(10):
+            R, X = self._create_case()
+
+            B0 = _wld_init(R)
+            W = 1. / np.abs(B0)**nu
+            B0 = dither(B0)
+
+            lmbda_max = get_lmbda_max(R, W)
+            B_hat0, _ = _solve_lasso(R, B0, (1 + eps) * lmbda_max, W,
+                                     method="fista", eps=eps)
+
+            B_hat, _ = _solve_lasso(R, B0, lmbda_max / (1 + eps), W,
+                                    method="fista", eps=eps)
+
+            self.assertTrue(np.all(B_hat0 == 0), "B != 0 at lmbda_max! "
+                            "iter = {}".format(it))
+            self.assertTrue(np.sum(B_hat != 0) > 0, "B == 0 before lmbda_max! "
+                            "iter = {}".format(it))
+        return
+
+    def test_lmbda_max002(self):
+        nu = 1.25
+        eps = 1e-4
+
+        for it in range(10):
+            R, X = self._create_big_case()
+
+            B0 = _wld_init(R)
+            W = 1. / np.abs(B0)**nu
+            B0 = dither(B0)
+
+            lmbda_max = get_lmbda_max(R, W)
+            B_hat0, _ = _solve_lasso(R, B0, (1 + eps) * lmbda_max, W,
+                                     method="fista", eps=eps)
+
+            B_hat, _ = _solve_lasso(R, B0, lmbda_max / (1 + eps), W,
+                                    method="fista", eps=eps)
+
+            self.assertTrue(np.all(B_hat0 == 0), "B != 0 at lmbda_max! "
+                            "iter = {}".format(it))
+            self.assertTrue(np.sum(B_hat != 0) > 0, "B == 0 before lmbda_max! "
+                            "iter = {}".format(it))
+        return
+
+    
