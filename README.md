@@ -7,7 +7,7 @@ The default method is reasonably fast and reliable, at least for small systems:
 Momentum and line-search make a big difference:
 ![alt text](https://raw.githubusercontent.com/RJTK/ts_lasso/master/figures/convergence.png)
 
-Plot of the BIC over lambda -- the default fit_VAR method will use fminsearch to try to find the maximizer.
+Plot of the cross validation error over lambda -- the default fit_VAR method will use fminsearch to maximize the BIC.
 ![alt text](https://raw.githubusercontent.com/RJTK/ts_lasso/master/figures/cost_path.png)
 
 Example regularization path:
