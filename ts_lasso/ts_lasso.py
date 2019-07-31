@@ -17,7 +17,11 @@ DEFAULT_ETA = 1.1
 MAXITER = 50000
 
 
-def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
+def fit_VAR(X, p_max, nu=1.25, eps=1e-3):
+    if nu is None:
+        nu = 1.25
+    fit_nu = True
+
     T = len(X)
     R = compute_covariance(X, p_max=p_max)
 
@@ -26,22 +30,8 @@ def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
     lmbda_star = None
     B_star = None
     for p in range(1, p_max + 1):
-        # Fit a bunch of VAR models
-        # TODO:
-        # This is a forward search on the model order
-        # There is probably a superior regularization scheme to accomplish
-        # similar behaviour, but this suffices for now.
-        if full_path:
-            # TODO: Incorporate lmbda_max somehow instead of just going from 0 to 1.
-            B, cost, lmbda_path, bic_path = _adalasso_bic_path(
-                R, T, p=p_max, nu=nu, lmbda_path=np.linspace(0, 1, 250),
-                eps=eps)
-            lmbda_i_opt = np.argmax(bic_path)
-            bic = bic_path[lmbda_i_opt]
-            lmbda = lmbda_path[lmbda_i_opt]
-        else:
-            B, cost, lmbda, bic = _adalasso_bic(R[:p + 1], T, p, nu,
-                                                lmbda_max=None, eps=eps)
+        B, cost, lmbda, bic = _adalasso_bic(R[:p + 1], T, p, nu,
+                                            lmbda_max=None, eps=eps)
 
         if bic > bic_star:
             B_star = B
@@ -54,7 +44,42 @@ def fit_VAR(X, p_max, nu=1.25, eps=1e-3, full_path=False):
 
     while np.all(B_star[-1] == 0) and len(B_star) > 1:
         B_star = B_star[:-1]
-    return B_star, cost_star, lmbda_star, bic_star
+
+    if fit_nu:
+        p_star = len(B_star)
+        B_star, cost_star, lmbda_star, bic_star, nu_star =\
+            _adalasso_bic_nu(R[:p_star + 1], T, eps=eps)
+        return B_star, cost_star, lmbda_star, bic_star, nu_star
+    else:
+        return B_star, cost_star, lmbda_star, bic_star
+
+
+def adalasso_bic_nu(X, p, eps=1e-3):
+    """
+    Fits the whole deal as well as choosing nu via BIC.
+    """
+    T = len(X)
+    R = compute_covariance(X, p_max=p)
+    return _adalasso_bic_nu(R, T, eps)
+
+
+def _adalasso_bic_nu(R, T, eps=1e-3):
+    p = len(R) - 1
+
+    def bic(nu):
+        B_star, cost_star, lmbda_star, bic = _adalasso_bic(
+            R, T, p, nu, eps=eps)
+        return B_star, cost_star, lmbda_star, -bic
+
+    nu_star, _bic_star, err, _ = fminbound(
+        lambda nu: bic(nu)[-1], x1=0.5, x2=2.0,
+        xtol=1e-2, full_output=True)
+
+    if err:
+        warnings.warn("fminbound exceeded maximum iterations")
+
+    B_star, cost_star, lmbda_star, neg_bic_star = bic(nu_star)
+    return B_star, cost_star, lmbda_star, -neg_bic_star, nu_star
 
 
 def adalasso_bic(X, p, nu=1.25, lmbda_max=None):
