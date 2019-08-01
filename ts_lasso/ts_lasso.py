@@ -17,10 +17,45 @@ DEFAULT_ETA = 1.1
 MAXITER = 50000
 
 
+def bootstrap_estimates(X, p_max, nu=1.25, eps=1e-3,
+                        resample_fraction=0.25,
+                        step_proportion=0.01):
+    """
+    This is an extremely ad-hoc experimental method.  We slide a
+    window along X estimating B as we go.  This can enable us to
+    detect non-stationarity, and acts as a sort of bootstrap
+    estimate of uncertainty.
+    """
+    res = fit_VAR(X, p_max, nu, eps)
+    B_star = res[0]
+    # lmbda_star = res[2]
+
+    # p_star = len(B_star)
+    T = len(X)
+    block_size = int(T * resample_fraction)
+    step_size = max(1, int(step_proportion * (T - block_size)))
+    steps = list(range(0, T - block_size, step_size))
+
+    B_bs = np.zeros((len(steps), p_max, *B_hat.shape[1:]))
+
+    for it, t0 in enumerate(steps):
+        Xrs = X[t0: t0 + block_size]
+        res = fit_VAR(Xrs, p_max, nu, eps)
+        B_hat = res[0]
+        # B_hat, _ = solve_adalasso(Xrs, p_star, lmbda_star, nu,
+        #                           eps=eps)
+        B_bs[it, :B_hat.shape[0]] = B_hat
+        print(it)
+    return B_star, B_hat
+
+
 def fit_VAR(X, p_max, nu=1.25, eps=1e-3):
     if nu is None:
+        # set nu=None to estimate nu via BIC as well
         nu = 1.25
-    fit_nu = True
+        fit_nu = True
+    else:
+        fit_nu = False
 
     T = len(X)
     R = compute_covariance(X, p_max=p_max)
@@ -220,6 +255,16 @@ def exact_cost_path(B_path, X):
     for i in range(len(cost)):
         cost[i] = exact_cost_function(B_path[i], X, lmbda=0.0)
     return cost
+
+
+def solve_adalasso(X, p, lmbda, nu, step_rule=0.1, line_srch=None,
+                   eps=1e-6, maxiter=MAXITER, method="fista"):
+    R = compute_covariance(X, p)
+    B0 = _wld_init(R)
+    W = 1. / np.abs(B0)**nu
+    B0 = dither(B0)
+    return _solve_lasso(R, B0, lmbda, W, step_rule, line_srch,
+                        eps, maxiter, method)
 
 
 def solve_lasso(X, p, lmbda=0.0, W=1.0, step_rule=0.1,
